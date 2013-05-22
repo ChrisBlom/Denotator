@@ -1,24 +1,8 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 
-{- Haskell Lexicon - Chris Blom - HW 5 version -}
-
-{- Please fill in you name and student number here:
-
-   name:
-   student number:
-
-   If your use ghci, start it like this:
-    ghci -fglasgow-exts -XTypeFamilies
-   If you use winhugs,
-    Enter this at File, Options, GHC startup:
-    ghc --interactive -fglasgow-exts -XTypeFamilies
-
-   Then, once you started ghci, enter:
-    :load Parser
-   to load the lexicon and parser
-
-   (Please contact Chris if you have any trouble opening or loading this file or ghci)
-   -}
+{- In this module the functions to compute the meanings of words are defined,
+   along with their syntactic rules.
+-}
 module Lexicon where
 
 import Data.Maybe
@@ -29,46 +13,50 @@ import Frame
 import FrameUtils
 import Syntax
 
+-- charf takes a set of entities (really a list) and returns its characteristic function.
+-- The characteristix function tells you if an entity is a member of the set or not.
+charf :: [E] -> E -> T
+charf set = \x -> x `elem` set
+
+-- charf2 takes a relation and returns its characteristic function
+charf2 :: (Eq a,Eq b) => [(a,b)] -> (b -> a -> T)
+charf2 relation = \y -> \x -> (x,y) `elem` relation
+
 
 {---- Boolean Type Class --------------------------------}
-infix 8 /\
-infix 8 \/
 
+-- Boolean type class defines common operation for 
+-- functions which are characteristic functions of set/relations -}
 class (FrameType a) => Boolean a where
   (/\)  :: a -> a -> a -- and
   (\/)  :: a -> a -> a -- or
-  compl :: a -> a      -- not
+  complement :: a -> a      -- not
   (.<.) :: a -> a -> T -- numerical order
-  one   :: a
-  zero  :: a
+  one   :: a           -- top
+  zero  :: a           -- bottom
 
----- T is a Boolean type
+infix 8 /\
+infix 8 \/
+
+-- T is a Boolean type
 instance Boolean T where
   x /\ y   = x && y
   x \/ y   = x || y
-  compl x  = not x
+  complement x  = not x
   x .<. y  = x ==> y
   one      = True
   zero     = False
 
-----  if type b is Boolean  then (a->b) is Boolean as well
+-- if type b is Boolean then (a->b) is Boolean as well
 instance (FrameType a,Boolean b) => Boolean (a -> b) where
   f /\ g   = \x -> f x /\ g x
   f \/ g   = \x -> f x \/ g x
-  compl f  = \x -> compl (f x)
+  complement f  = \x -> complement (f x)
   f .<. g  = forall ( \x -> f x .<. g x )
   one      = \x -> one
   zero     = \x -> zero
 
 {---- Combinators and Utility Functions -----------------}
-
--- charf takes a set of entities and returns its characteristic function
-charf :: [E] -> E -> T
-charf = \set -> \x -> x `elem` set
-
--- charf2 takes a relation and returns its characteristic function
-charf2 :: (Eq a,Eq b) => [(a,b)] -> (b -> a -> T)
-charf2 = \relation -> \y -> \x -> (x,y) `elem` relation
 
 -- list : takes an entity x and return the GQ for that entity x,
 --        (which is the char. function of all subsets of E that x is in)
@@ -85,21 +73,12 @@ forall f  = all f (domain f)
    (it returns the set that f characterizes) -}
 toList f = filter f (domain f)
 
-{- card : takes a characteristic function f and return the
+{- cardinality : takes a characteristic function f and return the
    number of arguments for which f returns True
    (it return the cardinality of the set that f characterizes) -}
-card f = length (toList f)
+cardinality f = length (toList f)
 
 {---- Denotations ---------------------------------------}
-
-{- Homework 4.3: 
-    (make 4.1 and 4.2 below first) -}
-{- Redefine the denotations below, such that all the 6 sentences below are all true.
-   (You can use the Parser to compute the sentence meaning,
-    for example by entering:
-      parse (sentence 1)
-    )
--}
 
 sentence 1  = "at_most 3 boys love leia"
 sentence 2  = "at_least 1 girl runs"
@@ -114,13 +93,13 @@ boy,girl,human,alien :: E -> T
 boy     = charf [Luke,Han,Yoda,Chewbacca,Vader]
 girl    = charf [Leia]
 human   = charf [Han,Luke,Leia,Vader]
-alien   = compl human
+alien   = complement human
 thin    = charf [Yoda,Leia]
 jedi    = charf [Luke,Vader]
 short   = charf [Yoda,Leia]
 tall    = charf [Han,Vader,Chewbacca]
 ran     = charf [Han,Luke]
-average_sized = compl (tall \/ short)
+average_sized = complement (tall \/ short)
 
 loves,hates,is_conflicted_about,does_not_care_about :: E -> E -> T
 loves = charf2 [ (Han,Leia) , (Leia,Luke) , (Luke,Leia) , (Han,Chewbacca)
@@ -128,9 +107,9 @@ loves = charf2 [ (Han,Leia) , (Leia,Luke) , (Luke,Leia) , (Han,Chewbacca)
 hates = charf2 ( [ (Vader,Luke) , (Vader,Han) ] `union` cartesian entities [Vader])
 
 is_conflicted_about = loves /\ hates
-does_not_care_about = compl (loves \/ hates)
+does_not_care_about = complement (loves \/ hates)
 
-{---- Denotations of GQ and DET's--------}
+{---- Denotations of Generalized Quantifiers and determiners--------}
 
 -- examples:
 every :: (E->T) -> (E->T) -> T
@@ -140,60 +119,21 @@ some :: (E->T) -> (E->T) -> T
 some f g = exists (f /\ g)
 
 no :: (E->T) -> (E->T) -> T
-no f g = card (f /\ g) == 0
+no f g = cardinality (f /\ g) == 0
 
 everyone :: (E->T) -> T
 everyone f = forall f
 
 someone :: (E->T) -> T
-someone f = card f > 0
+someone f = cardinality f > 0
 
 no_one :: (E->T) -> T
 no_one f = no one f
 
-
-{- Homework 4.2 :
-   Define denotations for most, many , few and add lexicon entries.
-   See the lecture notes on GQ's and Keenan for hints on what the denotations should be.
-   To give these denotatios as haskell terms, take a good look at the example above and
-   the utility functions.
-   Hint: you can use the polymorhic boolean types and any of the utility functions -}
-
---most :: (E->T) -> (E->T) -> T
---most
-
---many :: (E->T) -> (E->T) -> T
---many
-
---few :: (E->T) -> (E->T) -> T
---few
-
-{- Homework 4.3 :
-   define a denotation for 'exactly', that takes a Integer n (a integer number), and
-   two f and g (characterizing sets of entities) and returns
-   True if the intersection of these sets is of size n.
-   Also add the lexicon entry.
-   Hint: you can use the polymorhic boolean types and any of the utility functions such as card
-   -}
-
---exactly :: Integer -> (E->T) -> (E->T) -> T
---exactly
-
-{- Define similar denotations for at_least and at_most and uncomment the lexicon entries -}
-
---at_least :: Integer -> (E->T) -> (E->T) -> T
---at_least
-
---at_most :: Integer -> (E->T) -> (E->T) -> T
---at_most
-
-
 {---- Type Abbreviations --------------------------------}
-
 type ET  = E -> T         -- E -> T
 type GQ  = ET -> T        -- generalized quantifiers
 type DET = ET -> ET -> T  -- determiners
-
 
 {---- Lexicon -------------------------------------------}
 
@@ -206,8 +146,8 @@ np      = NP              -- noun phrases
 iv      = np :\ s         -- intransitive verbs: require a np on the left
 tv      = iv :/ np        -- transitive verbs: require a np on the left and right 
 dtv     =((np:\s):/np):/np-- ditransitive verbs
-adn     = N :/ N          -- adnominals : take a noun, return a noun 
-adv     = iv :\ iv        -- adverbs
+adn     = N :/ N          -- adnominals : take a noun and return a noun
+adv     = iv :\ iv        -- adverbs : take a verb and return a verb
 det     = s :/ iv :/ n    -- determiners
 gq      = s:/(np:\s)      -- generalized quantifiers
 
@@ -220,7 +160,6 @@ newtype Lexicon = Lexicon { entries :: [LexiconEntry] }
 The Lexicon: this is the lexicon where all the entries are defined.
 A lexicon is a list of words, associated with their denotation and syntactic type
 -----------------------------------------------------------------}
-
 lexicon = Lexicon $ [ entry (show x) num x | x <- [(1::Integer)..10] ] ++
   [
 {-=== Entities ===-}
@@ -273,47 +212,36 @@ lexicon = Lexicon $ [ entry (show x) num x | x <- [(1::Integer)..10] ] ++
   , entry "someone"    gq                         someone
   , entry "no_one"     gq                         no_one
 
---  , entry "few"     det                             no
---  , entry "many"    det                             no
---  , entry "most"    det                             no
-
---  , entry "exactly"     (det:/num)                  exactly
---  , entry "at_most"     (det:/num)                  at_most
---  , entry "at_least"     (det:/num)                 at_least
-
 {- Coordinations -}
 -- TODO : find out how to use polymorphism in the lexicon: this is awful!
   , entry "and"       ((s:\s):/s)               ( (/\) :: T -> T -> T )
   , entry "or"        ((s:\s):/s)               ( (\/) :: T -> T -> T )
-  , entry "it_is_not_the_case_that" (s:/s)      ( compl :: T -> T )
+  , entry "it_is_not_the_case_that" (s:/s)      ( complement :: T -> T )
 
   , entry "and"       ((gq:\gq):/gq)               ( (/\) :: GQ -> GQ -> GQ)
   , entry "or"        ((gq:\gq):/gq)               ( (\/) :: GQ -> GQ -> GQ )
-  , entry "it_is_not_the_case_that" (gq:/gq)      ( compl :: GQ -> GQ )
+  , entry "it_is_not_the_case_that" (gq:/gq)      ( complement :: GQ -> GQ )
 
   , entry "and"       ((n:\n):/n)               ( (/\) :: (E->T)->(E->T)->(E->T))
   , entry "or"        ((n:\n):/n)               ( (\/) :: (E->T)->(E->T)->(E->T))
-  , entry "not"       (n:/n)                    ( compl :: (E->T) -> (E->T) )
+  , entry "not"       (n:/n)                    ( complement :: (E->T) -> (E->T) )
 
   , entry "and"       ((iv:\iv):/iv)            ( (/\) :: (E->T)->(E->T)->(E->T))
   , entry "or"        ((iv:\iv):/iv)            ( (\/) :: (E->T)->(E->T)->(E->T))
-  , entry "not"       (iv:/iv)                  ( compl :: (E->T) -> (E->T) )
+  , entry "not"       (iv:/iv)                  ( complement :: (E->T) -> (E->T) )
 
   , entry "and"       ((adv:\adv):/adv)            ( (/\) :: (ET->ET)->(ET->ET)->(ET->ET))
   , entry "or"        ((adv:\adv):/adv)            ( (\/) :: (ET->ET)->(ET->ET)->(ET->ET))
-  , entry "not"       (adv:/adv)                  ( compl :: (ET->ET)->(ET->ET) )
+  , entry "not"       (adv:/adv)                  ( complement :: (ET->ET)->(ET->ET) )
 
   , entry "and"       ((det:\det):/det)            ( (/\) :: DET->DET->DET)
   , entry "or"        ((det:\det):/det)            ( (\/) :: DET->DET->DET)
-  , entry "not"       (det:/det)                  ( compl :: (DET->DET) )
+  , entry "not"       (det:/det)                  ( complement :: (DET->DET) )
 
   , entry "and"       ((gq:\gq):/gq)            ( (/\) :: GQ->GQ->GQ)
   , entry "or"        ((gq:\gq):/gq)            ( (\/) :: GQ->GQ->GQ)
-  , entry "not"       (gq:/gq)                  ( compl :: (GQ->GQ) )
+  , entry "not"       (gq:/gq)                  ( complement :: (GQ->GQ) )
   ]
-
-
-
 
 ------------------------------------------------------------------
 -- Dont change anything below this line
