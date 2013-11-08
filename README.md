@@ -7,6 +7,11 @@ Formal semantics is a subfield from linguistics which studies how meaning of lan
 
 This project makes it easy to do semantics in Haskell.
 
+Prerequisites
+=========
+
+Haskell: http://www.haskell.org/platform/
+
 
 Get started
 ========= 

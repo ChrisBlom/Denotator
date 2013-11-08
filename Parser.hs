@@ -142,8 +142,8 @@ pipe = text "|" --[chr 9475]
 ends = text "\\="  -- [chr 9495] <> line  -- text "\\"
 bar = mtab <> pipe
 
+vr    = text "|=" --text [chr 9507]
 line  = text "="	--text [chr 9473]
-vr    = text "|="	--text [chr 9507]
 cross = text "+"  --text [chr 9523]
 block = text "#"  --text [chr 9608]
 circ  = text "o"  --text [chr 9675]

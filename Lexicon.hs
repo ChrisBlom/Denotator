@@ -9,52 +9,23 @@ import Data.Maybe
 import Data.List
 import Control.Monad
 
+import Quantifiers
 import Frame
 import FrameUtils
 import Syntax
+import Boolean
+-- Converts a collection to its characteristic function.
+-- Takes a set of entities,
+-- returns a function that takes
+--    an entity,
+--    returns true iff the entity is in the set or false otherwise
+isIn :: [E] -> E -> T
+isIn set = \x -> x `elem` set
 
--- charf takes a set of entities (really a list) and returns its characteristic function.
--- The characteristix function tells you if an entity is a member of the set or not.
-charf :: [E] -> E -> T
-charf set = \x -> x `elem` set
+-- isIn2 takes a relation and returns its characteristic function
+isIn2 :: (Eq a,Eq b) => [(a,b)] -> (b -> a -> T)
+isIn2 relation = \y -> \x -> (x,y) `elem` relation
 
--- charf2 takes a relation and returns its characteristic function
-charf2 :: (Eq a,Eq b) => [(a,b)] -> (b -> a -> T)
-charf2 relation = \y -> \x -> (x,y) `elem` relation
-
-
-{---- Boolean Type Class --------------------------------}
-
--- Boolean type class defines common operation for 
--- functions which are characteristic functions of set/relations -}
-class (FrameType a) => Boolean a where
-  (/\)  :: a -> a -> a -- and
-  (\/)  :: a -> a -> a -- or
-  complement :: a -> a      -- not
-  (.<.) :: a -> a -> T -- numerical order
-  one   :: a           -- top
-  zero  :: a           -- bottom
-
-infix 8 /\
-infix 8 \/
-
--- T is a Boolean type
-instance Boolean T where
-  x /\ y   = x && y
-  x \/ y   = x || y
-  complement x  = not x
-  x .<. y  = x ==> y
-  one      = True
-  zero     = False
-
--- if type b is Boolean then (a->b) is Boolean as well
-instance (FrameType a,Boolean b) => Boolean (a -> b) where
-  f /\ g   = \x -> f x /\ g x
-  f \/ g   = \x -> f x \/ g x
-  complement f  = \x -> complement (f x)
-  f .<. g  = forall ( \x -> f x .<. g x )
-  one      = \x -> one
-  zero     = \x -> zero
 
 {---- Combinators and Utility Functions -----------------}
 
@@ -63,10 +34,6 @@ instance (FrameType a,Boolean b) => Boolean (a -> b) where
 lift :: E -> (E->T)->T
 lift = \x -> \f -> f x
 
--- Quantifiers
-exists,forall :: (FrameType a) => ( a -> T ) -> T
-exists f  = any f (domain f)
-forall f  = all f (domain f)
 
 {- toList : takes a boolean function f and returns a list
    of all arguments for which f returns True
@@ -80,31 +47,23 @@ cardinality f = length (toList f)
 
 {---- Denotations ---------------------------------------}
 
-sentence 1  = "at_most 3 boys love leia"
-sentence 2  = "at_least 1 girl runs"
-sentence 3  = "exactly 1 alien loves Han"
-sentence 4  = "few boys are boys and tall"
-sentence 5  = "most boys love leia"
-sentence 6  = "many aliens are thin"
-sentence 7  = "at_least 2 boys and ^ leia are human"
-
 {- denotations to edit: -}
-boy,girl,human,alien :: E -> T
-boy     = charf [Luke,Han,Yoda,Chewbacca,Vader]
-girl    = charf [Leia]
-human   = charf [Han,Luke,Leia,Vader]
+human,alien :: E -> T
+
+human   = isIn [Han,Luke,Leia,Vader]
 alien   = complement human
-thin    = charf [Yoda,Leia]
-jedi    = charf [Luke,Vader]
-short   = charf [Yoda,Leia]
-tall    = charf [Han,Vader,Chewbacca]
-ran     = charf [Han,Luke]
+
+jedi    = isIn [Luke,Vader]
+short   = isIn [Yoda,Leia]
+tall    = isIn [Han,Vader,Chewbacca]
+thin    = isIn [Leia,Yoda]
+ran     = isIn [Han,Luke]
 average_sized = complement (tall \/ short)
 
 loves,hates,is_conflicted_about,does_not_care_about :: E -> E -> T
-loves = charf2 [ (Han,Leia) , (Leia,Luke) , (Luke,Leia) , (Han,Chewbacca)
+loves = isIn2 [ (Han,Leia) , (Leia,Luke) , (Luke,Leia) , (Han,Chewbacca)
                , (Vader,Luke) , (Chewbacca,Han)  ]
-hates = charf2 ( [ (Vader,Luke) , (Vader,Han) ] `union` cartesian entities [Vader])
+hates = isIn2 ( [ (Vader,Luke) , (Vader,Han) ] `union` cartesian entities [Vader])
 
 is_conflicted_about = loves /\ hates
 does_not_care_about = complement (loves \/ hates)
@@ -181,10 +140,6 @@ lexicon = Lexicon $ [ entry (show x) num x | x <- [(1::Integer)..10] ] ++
   , entry "did"       (iv:/iv)                   ( id :: (E->T) -> (E->T) )
 
 {-=== Nouns and Adjectives ===-}
-  , entry "boy"       n                           boy
-  , entry "boys"      n                           boy
-  , entry "girl"      n                           girl
-  , entry "girls"     n                           girl
   , entry "tall"      n                           tall
   , entry "thin"      n                           thin
   , entry "human"     n                           human
