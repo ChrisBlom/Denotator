@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TypeSynonymInstances, TemplateHaskell #-}
 
 {- In this module the functions to compute the meanings of words are defined,
    along with their syntactic rules.
@@ -14,80 +14,69 @@ import Frame
 import FrameUtils
 import Syntax
 import Boolean
--- Converts a collection to its characteristic function.
+
+
+import Test.QuickCheck
+
+deepCheck n = verboseCheckWith (stdArgs { maxSuccess = n , chatty = True})
+
+-- Takes a set and returns is characteristic function.
 -- Takes a set of entities,
 -- returns a function that takes
 --    an entity,
 --    returns true iff the entity is in the set or false otherwise
-isIn :: [E] -> E -> T
-isIn set = \x -> x `elem` set
+charfun :: [E] -> E -> T
+charfun set = \x -> x `elem` set
 
--- isIn2 takes a relation and returns its characteristic function
-isIn2 :: (Eq a,Eq b) => [(a,b)] -> (b -> a -> T)
-isIn2 relation = \y -> \x -> (x,y) `elem` relation
+-- charfun_rel takes a relation and returns its characteristic function
+cahrfun_rel :: (Eq a,Eq b) => [(a,b)] -> (b -> a -> T)
+cahrfun_rel relation = \y -> \x -> (x,y) `elem` relation
 
-
-{---- Combinators and Utility Functions -----------------}
-
--- list : takes an entity x and return the GQ for that entity x,
+-- lift : takes an entity x and return the GQ for that entity x,
 --        (which is the char. function of all subsets of E that x is in)
 lift :: E -> (E->T)->T
 lift = \x -> \f -> f x
-
 
 {- toList : takes a boolean function f and returns a list
    of all arguments for which f returns True
    (it returns the set that f characterizes) -}
 toList f = filter f (domain f)
 
-{- cardinality : takes a characteristic function f and return the
+{- cardinality : takes a characteristic function f and returns the
    number of arguments for which f returns True
    (it return the cardinality of the set that f characterizes) -}
 cardinality f = length (toList f)
 
-{---- Denotations ---------------------------------------}
+
+luke :: E 
+luke = Luke
 
 {- denotations to edit: -}
 human,alien :: E -> T
 
-human   = isIn [Han,Luke,Leia,Vader]
+human   = charfun [Han,Luke,Leia,Vader]
 alien   = complement human
 
-jedi    = isIn [Luke,Vader]
-short   = isIn [Yoda,Leia]
-tall    = isIn [Han,Vader,Chewbacca]
-thin    = isIn [Leia,Yoda]
-ran     = isIn [Han,Luke]
-average_sized = complement (tall \/ short)
+jedi    = charfun [Luke,Vader]
+short   = charfun [Yoda,Leia]
+tall    = charfun [Han,Vader,Chewbacca]
+thin    = charfun [Leia,Yoda]
+ran     = charfun [Han,Luke]
+normal  = complement (tall \/ short)
+
+good    = charfun [Luke,Vader,Yoda,Han,Chewbacca]
+evil    = complement good
 
 loves,hates,is_conflicted_about,does_not_care_about :: E -> E -> T
-loves = isIn2 [ (Han,Leia) , (Leia,Luke) , (Luke,Leia) , (Han,Chewbacca)
+loves = cahrfun_rel [ (Han,Leia) , (Leia,Luke) , (Luke,Leia) , (Han,Chewbacca)
                , (Vader,Luke) , (Chewbacca,Han)  ]
-hates = isIn2 ( [ (Vader,Luke) , (Vader,Han) ] `union` cartesian entities [Vader])
+hates = cahrfun_rel ( [ (Vader,Luke) , (Vader,Han) ] `union` cartesian entities [Vader])
+
+fast :: (E -> T) -> (E -> T)
+fast f = f /\ charfun [Luke]
 
 is_conflicted_about = loves /\ hates
 does_not_care_about = complement (loves \/ hates)
-
-{---- Denotations of Generalized Quantifiers and determiners--------}
-
--- examples:
-every :: (E->T) -> (E->T) -> T
-every f g = f .<. g
-
-some :: (E->T) -> (E->T) -> T
-some f g = exists (f /\ g)
-
-no :: (E->T) -> (E->T) -> T
-no f g = cardinality (f /\ g) == 0
-
-everyone :: (E->T) -> T
-everyone f = forall f
-
-someone :: (E->T) -> T
-someone f = cardinality f > 0
-
-no_one :: (E->T) -> T
-no_one f = no one f
 
 {---- Type Abbreviations --------------------------------}
 type ET  = E -> T         -- E -> T
@@ -98,9 +87,9 @@ type DET = ET -> ET -> T  -- determiners
 
 -- some abbreviations for common syntactic categories
 --        definition      category:
+s       = S               -- sentences
 n       = N               -- nouns
 num     = NUM             -- numbers
-s       = S               -- sentences
 np      = NP              -- noun phrases
 iv      = np :\ s         -- intransitive verbs: require a np on the left
 tv      = iv :/ np        -- transitive verbs: require a np on the left and right 
@@ -112,12 +101,13 @@ gq      = s:/(np:\s)      -- generalized quantifiers
 
 type LexiconEntry = (String, SynCat, Denotation, [MP])
 newtype Lexicon = Lexicon { entries :: [LexiconEntry] }
-{- the lexicon : a list of Strings associated with their syntactic category and denotation -}
 
 
-{-----------------------------------------------------------------
+alien_mod = (/\ alien)
+
+{----------------------------------------------------------------- 
 The Lexicon: this is the lexicon where all the entries are defined.
-A lexicon is a list of words, associated with their denotation and syntactic type
+A lexicon is a list of triples of a word, a syntactic type and a denotation
 -----------------------------------------------------------------}
 lexicon = Lexicon $ [ entry (show x) num x | x <- [(1::Integer)..10] ] ++
   [
@@ -145,8 +135,7 @@ lexicon = Lexicon $ [ entry (show x) num x | x <- [(1::Integer)..10] ] ++
   , entry "human"     n                           human
   , entry "short"     n                           short
   , entry "alien"     n                           alien
-  , entry "aliens"    n                           alien
-  , entry "average_sized"  n                      average_sized
+  , entry "alien"     (n:/n)                      alien_mod
 
 {-=== Verbs and Adverbs===-}
   , entry "ran"        iv                         ran
@@ -158,7 +147,6 @@ lexicon = Lexicon $ [ entry (show x) num x | x <- [(1::Integer)..10] ] ++
   , entry "does_not_care_about" tv                does_not_care_about
 
 {-=== Determiners and GQ's ===-}
-
   , entry "every"     det                         every
   , entry "some"      det                         some
   , entry "no"        det                         no
@@ -167,52 +155,17 @@ lexicon = Lexicon $ [ entry (show x) num x | x <- [(1::Integer)..10] ] ++
   , entry "someone"    gq                         someone
   , entry "no_one"     gq                         no_one
 
-{- Coordinations -}
--- TODO : find out how to use polymorphism in the lexicon: this is awful!
+{- Coordination -}
   , entry "and"       ((s:\s):/s)               ( (/\) :: T -> T -> T )
   , entry "or"        ((s:\s):/s)               ( (\/) :: T -> T -> T )
   , entry "it_is_not_the_case_that" (s:/s)      ( complement :: T -> T )
-
-  , entry "and"       ((gq:\gq):/gq)               ( (/\) :: GQ -> GQ -> GQ)
-  , entry "or"        ((gq:\gq):/gq)               ( (\/) :: GQ -> GQ -> GQ )
-  , entry "it_is_not_the_case_that" (gq:/gq)      ( complement :: GQ -> GQ )
-
-  , entry "and"       ((n:\n):/n)               ( (/\) :: (E->T)->(E->T)->(E->T))
-  , entry "or"        ((n:\n):/n)               ( (\/) :: (E->T)->(E->T)->(E->T))
-  , entry "not"       (n:/n)                    ( complement :: (E->T) -> (E->T) )
-
-  , entry "and"       ((iv:\iv):/iv)            ( (/\) :: (E->T)->(E->T)->(E->T))
-  , entry "or"        ((iv:\iv):/iv)            ( (\/) :: (E->T)->(E->T)->(E->T))
-  , entry "not"       (iv:/iv)                  ( complement :: (E->T) -> (E->T) )
-
-  , entry "and"       ((adv:\adv):/adv)            ( (/\) :: (ET->ET)->(ET->ET)->(ET->ET))
-  , entry "or"        ((adv:\adv):/adv)            ( (\/) :: (ET->ET)->(ET->ET)->(ET->ET))
-  , entry "not"       (adv:/adv)                  ( complement :: (ET->ET)->(ET->ET) )
-
-  , entry "and"       ((det:\det):/det)            ( (/\) :: DET->DET->DET)
-  , entry "or"        ((det:\det):/det)            ( (\/) :: DET->DET->DET)
-  , entry "not"       (det:/det)                  ( complement :: (DET->DET) )
-
-  , entry "and"       ((gq:\gq):/gq)            ( (/\) :: GQ->GQ->GQ)
-  , entry "or"        ((gq:\gq):/gq)            ( (\/) :: GQ->GQ->GQ)
-  , entry "not"       (gq:/gq)                  ( complement :: (GQ->GQ) )
   ]
 
 ------------------------------------------------------------------
 -- Dont change anything below this line
 ------------------------------------------------------------------
-    {-
-checkMP :: [f] -> (f->T) -> Bool
-checkMP functions  mp = not . null $ filter mp functions
-
-
-(.|.) :: (FrameType f) => LexiconEntry -> (String,f) -> LexiconEntry
-(str,syn,den,mp) .|. (des,mp2) = (str,syn,den,(MP des $ hide mp2) : mp)
-
-
 entry :: (FrameType t,SyntacticType s ,CorrespondingTypes s t)
       => String -> s -> t  -> LexiconEntry
-      -}
 entry string syntax denotation = (string,wrap syntax, hide denotation,[])
 
 getEntry :: String -> IO ()
@@ -234,7 +187,7 @@ entryArr (str,syn,den,mp) =
 instance Show Lexicon where
   show lexicon =  unlines $ map space rows  where
     rows    = map entryArr (entries lexicon)
-    widths  = foldr (zipWith max . map length ) [0..] $ rows
+    widths  = foldr (zipWith max . map length) [0..] $ rows
     space   = concat . map (trimTo 40) . zipWith fillTo widths
     fillTo n string = take n $ string ++ repeat ' '
     trimTo n string = if length string > n then (take (n-3) string) ++ "..." else string
@@ -242,17 +195,3 @@ instance Show Lexicon where
 data MP = MP String Denotation
 instance Show MP  where show (MP str _) = str
 instance Eq MP    where (MP a _) == (MP b _) = a == b
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -24,32 +24,19 @@ import Data.Maybe
 import Data.List
 import Data.Char
 
+import Data.Tuple.Curry
 -- Logical implication
-(==>) :: T -> T -> T
-True ==> False = False
-_    ==> _     = True
+(===>) :: T -> T -> T
+True ===> False = False
+_    ===> _     = True
 
+-- Quantifiers
+exists,forall :: (FrameType a) => ( a -> T ) -> T
+exists f  = any f (domain f)
+forall f  = all f (domain f)
 
 -- Cartesian product
 cartesian a b = [ (x,y) | x <- a , y <- b ]
-
-{- S : Worlds, a wrapper around Int, Haskells built in type for integers. -}
-newtype W = World Int
-  deriving (Eq,Ord,Enum,Typeable)
-
-instance Show W where show (World x) = show x
-
-newtype Z = Time Int deriving (Eq,Ord, Enum,Show,Typeable)
-
-{- worlds : a list of all the worlds in the frame -}
-worlds :: [W]
-worlds = [(World 1)..(World 3)]
-
-{- timepoints : a list of all the timepoints in the frame -}
-times :: [Z]
-times = [ (Time 0)..(Time 1000)]
-
-
 
 {-- FrameType defines which types are used in the frame,
     and provides extra functionality for those types.  -}
@@ -109,28 +96,6 @@ instance FrameType T where
   treeI           = LeafT
   showI = show
 
-instance FrameType W where
-  data FTree W   = LeafW W
-  type DomainType W = W
-  type TargetType W = W
-  domain _        = worlds
-  target _      = worlds
-  functionSpaceOf _ = worlds
-  image _         = worlds
-  treeI           = LeafW
-  showI = show
-
-instance FrameType Z where
-  data FTree Z  = LeafZ Z
-  type DomainType Z = Z
-  type TargetType Z = Z
-  domain _        = times
-  target _      = times
-  functionSpaceOf _ = times
-  image _         = times
-  treeI           = LeafZ
-  showI = show
-
 instance (FrameType a ,FrameType b ) => FrameType (a->b) where
   type DomainType (a->b) = a
   type TargetType (a->b) = b
@@ -170,8 +135,6 @@ instance (FrameType a,FrameType b) => Eq (a -> b) where
 spacer n = take 5 $ repeat ' '
 instance Show (FTree E) where showsPrec p (LeafE x) i = i++spacer p ++ show x ++ "\n"
 instance Show (FTree T) where showsPrec p (LeafT x) i = i++spacer p ++ show x ++ "\n"
-instance Show (FTree W) where showsPrec p (LeafW x) i = i++spacer p ++ show x ++ "\n"
-instance Show (FTree Z) where showsPrec p (LeafZ x) i =i++ spacer p ++ show x ++ "\n"
 instance (Show (FTree b),Show a) => Show (FTree (a->b) ) where
   showsPrec n (FSplit x) i =
     concat $
@@ -222,12 +185,12 @@ showType (Sem x) = reverse $ clean [] $ concat [show (dynTypeRep x)  ] where
 
       typeRep = dynTypeRep x
       showcast t
-          | t == typeE   = show $fromJust $  ((fromDynamic x) :: Maybe (E))
-          | t == typeT   = show $fromJust $ ((fromDynamic x) :: Maybe (T))
-          | t == typeET  = show $ fromJust$ ((fromDynamic x) :: Maybe (E -> T))
-          | t == typeEET = show $fromJust $  ((fromDynamic x) :: Maybe (E -> E -> T))
-          | t == typeETT  = show $fromJust$  ((fromDynamic x) :: Maybe ((E->T)->T))
-          | t == typeListE  = show $fromJust$  ((fromDynamic x) :: Maybe ([E]))
+          | t == typeE   = show $ fromJust $  ((fromDynamic x) :: Maybe (E))
+          | t == typeT   = show $ fromJust $ ((fromDynamic x) :: Maybe (T))
+          | t == typeET  = show $ fromJust $ ((fromDynamic x) :: Maybe (E -> T))
+          | t == typeEET = show $ fromJust $  ((fromDynamic x) :: Maybe (E -> E -> T))
+          | t == typeETT  = show $ fromJust $  ((fromDynamic x) :: Maybe ((E->T)->T))
+          | t == typeListE  = show $ fromJust $  ((fromDynamic x) :: Maybe ([E]))
           | otherwise = "~"
 
 isId f = all (\x -> (f x) == x ) (domain f)
@@ -243,19 +206,19 @@ instance Show Denotation where
 
       typeRep = dynTypeRep x
       showcast t
-          | t == typeE   = show $fromJust $  ((fromDynamic x) :: Maybe (E))
-          | t == typeT   = show $fromJust $ ((fromDynamic x) :: Maybe (T))
-          | t == typeTT   = show $fromJust $ ((fromDynamic x) :: Maybe (T -> T))
-          | t == typeET  = showFunctionAsSet $fromJust$ ((fromDynamic x) :: Maybe (E -> T))
-          | t == typeEET = show $ fromJust$  ((fromDynamic x) :: Maybe (E -> E -> T))
-          | t == typeETET = show $ fromJust$  ((fromDynamic x) :: Maybe ((E -> T) -> E -> T))
+          | t == typeE    = show $ fromJust $  ((fromDynamic x) :: Maybe (E))
+          | t == typeT    = show $ fromJust $ ((fromDynamic x) :: Maybe (T))
+          | t == typeTT   = show $ fromJust $ ((fromDynamic x) :: Maybe (T -> T))
+          | t == typeET   = showFunctionAsSet $ fromJust $ ((fromDynamic x) :: Maybe (E -> T))
+          | t == typeEET  = show $ fromJust $  ((fromDynamic x) :: Maybe (E -> E -> T))
+          | t == typeETET = show $ fromJust $  ((fromDynamic x) :: Maybe ((E -> T) -> E -> T))
       --    | t == typeETT  = bla $fromJust$  ((fromDynamic x) :: Maybe ((E->T)->T))
-          | t == typeListE  = show $fromJust$  ((fromDynamic x) :: Maybe ([E]))
+          | t == typeListE  = show $ fromJust $  ((fromDynamic x) :: Maybe ([E]))
           | otherwise =  "~"
 
 showFunctionAsSet f = showAsSet $ filter f (domain f)
-showAsSet x = (\x -> "{"++x++"}") $ concat $intersperse "," $  map show x
-showAsSetAbbr x = (\x -> "{"++x++"}") $ concat $intersperse "," $  map (take 2 . show) x
+showAsSet x = (\x -> "{"++x++"}") $ concat $ intersperse "," $  map show x
+showAsSetAbbr x = (\x -> "{"++x++"}") $ concat $ intersperse "," $  map (take 2 . show) x
 asSet2 x = (\x -> "{"++x++"}\n") $ concat $ intersperse "," x
 
 bla f = asSet2 $ map asSet2 $ (map.map) (take 2 . show) ents
@@ -268,8 +231,6 @@ bla2 f =  asSet2 $ map (\(a,b) -> concat ["(",showAsSetAbbr a," , ",showAsSetAbb
     sets = filter (uncurry f) (cartesian (domain f) (domain f))
     ents = map (\(x,y) -> (filter x (domain x),filter y (domain y))  ) sets
 
-instance Show (W->E) where
-  show f = show $ map (\x -> (x , f x) ) (domain f)
 instance Show (E->T) where
   show f = showAsSet $ filter f (domain f)
 instance Show (T->T) where
@@ -279,8 +240,6 @@ instance Show ((E->T)-> E ->T) where
   show f
     | isId f    = "'identity function'"
     | otherwise = "~" -- show $ map (\x -> concat $ [show x,"|->",show $ f x]) (domain f)
-instance Show (W->T) where
-  show f = showAsSet $ filter f (domain f)
 
 instance Show (E->E->T) where
   show f = showAsSet $ filter (uncurry $ flip f) $ cartesian (domain f) (domain f)

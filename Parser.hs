@@ -11,7 +11,6 @@ import Text.PrettyPrint hiding (Mode,cat)
 import Data.Dynamic
 import Data.Typeable
 
-
 -- Parses a sentence and shows the derivations (as decorated syntax trees)
 parse sentence
  | size == 0 	= putStrLn "The sentence could not be completely parsed"
@@ -31,7 +30,7 @@ try input = putStr (show c ++ "\n" ++ show a) where
    (c, a) = run_parser input
 
 
-{- An Item is used for representing linguistic rescources in the parser.
+{- An Item is used for representing linguistic resources in the parser.
  It is a 6-tuple consisting of:
  * a left index, a categorial type, a String, a denotation,
  * ,meaning postulates and a right index -}
@@ -53,10 +52,10 @@ cat_eq a b = cat a == cat b
 str_eq a b = str a == str b
 -- Items are adjacent if the right and left index are equal
 adjacent l r = end l == start r
-unChart (Chart x) = x
+
 
 -- Charts and agenda's are lists of items
-newtype Chart  = Chart  [Item]
+newtype Chart  = Chart  { unchart :: [Item] }
 newtype Agenda = Agenda [Item]
 
 -- Rules combine 2 items to none or multiple items
@@ -67,6 +66,9 @@ data Tree a
 	= Nil
 	| Extend a (Tree a)
 	| Split  a (Tree a) (Tree a)    deriving (Show,Eq)
+
+top (Split a _ _) = a
+top (Extend a _ ) = a
 
 prettyprint :: Tree Item -> Doc
 prettyprint x = ppD $ path [] x
@@ -80,7 +82,6 @@ ppItem_b (Item i cat str sem mp j)
 	where n = ((length str) )- (length $ show cat)
 
 spacea x = text $ take x (repeat ' ')
-
 
 data Direction = L | R | D deriving (Show,Eq)
 type Path = [Direction]
@@ -177,17 +178,17 @@ pair l r = l
 rule_AppLeft,rule_AppRight :: Rule
 --			|  |SynCat	  |String|Denotation      |Type     |MP	   |  |
 rule_AppLeft
-  left@(Item i  b      m      x          ma 		k )
- right@(Item k'(b':\:a) n      f          mb 		j ) =
+  left@( Item i  b        m      x                ma 	    	k )
+ right@( Item k' (b':\:a) n      f                mb        j ) =
  -- --------|--|------|------|---------|---------|---------|--|
      if adjacent left right && b==b'  then
  -- --------|--|------|------|---------|---------|---------|--| \ elimination
-     [(Item i      a  (m+++n)(apply f x)  	 (ma.+.mb)  j )]  else []
+      [( Item i      a  (m+++n)  (apply f x)  	 (ma.+.mb)  j )]  else []
 rule_AppLeft _ _ = []
 
 rule_AppRight               -- (F f (a:->tb)) and (s) = f s
   left@(Item i (a:/:b)  m      f          ma 	    k )
- right@(Item k'    b'  n      x         mb 	    j ) =
+ right@(Item k'     b'  n      x          mb 	    j ) =
  -- --------|--|------|------|---------|---------|---------|--|
   if adjacent left right && b==b'  then
  -- --------|--|------|------|---------|---------|---------|--| / elimination
@@ -203,12 +204,10 @@ rule_Pair subformulas
       [(Item i (a:*:b) (m.*.n)(pair l r) (ma.+.mb)  j )]  else []
 
 
-
-
 -- combining strings with bracketing for display purposes of derived items
 (+++) :: String -> String -> String
 a +++ b = bracket  $ a ++ " " ++ b  -- for application
-a .*. b = bracket  $ a ++ "_" ++ b  -- for pairing
+a .*. b = bracket  $ a ++ "*" ++ b  -- for pairing
 
 -- combining Meaning Postulates (union)
 (.+.) :: (Eq a) => [a] -> [a] -> [a]
@@ -243,7 +242,7 @@ exhaust_agenda (a,Agenda i) =
 	(\(l,r,_) -> (l,r) ) (exhaust_agenda' (a,Agenda i,subformulas i))
 exhaust_agenda' :: (Chart,Agenda,[SynCat]) -> (Chart,Agenda,[SynCat])
 
-{- If the agenda is empty
+{- If the agenda is empty, return 
    If the agenda is not empty:
 	Take the first item on the agenda (agenda_head)
 	  if agenda_head is already in the chart 
@@ -282,35 +281,26 @@ run_ptree sent = ptree' ( [] , map (\x -> Split x Nil Nil) items, subformulas it
 	where items = itemize sent
 fst3 (a,_,_) = a
 
-
-{-instance Show (Tree String) where
-	show x = drop 7 $ show' (0) x  where
-		show' n Nil  = ""
-  		show' n (Split x l r) 
-			= concat [(take (n*6) (repeat ' ' )) , "   +---", x , "\n"	
- 					 , show' (n+1) l
-					 , show' (n+1) r
-					 ]   --}
-
 -- Subformula computation for product formula's
 data Polarity = Plus | Min
+
 subform Plus (a :*: b) = [a :*: b] ++ subform Plus a ++ subform Plus b
 subform Min  (c :/: x) = case x of
 	(a :*: b ) -> subform Plus x ++ subform Min c
-	_		  -> subform Min c
+	_		       -> subform Min c
 subform _ _ = []
 
 subformulas items = concat $ map itemsubform items
 	where itemsubform x = subform Min (cat x)
 
   -- [(String, SynCat, Denotation,[MP])]
--- lex_lookup: return the matching entries in the lexicon. case is ignored
-lex_lookup :: Lexicon -> String -> [(SynCat,Denotation,[MP])]
-lex_lookup lex x
+-- lexical_lookup: return the matching entries in the lexicon. case is ignored
+lexical_lookup :: Lexicon -> String -> [(SynCat,Denotation,[MP])]
+lexical_lookup lex x
    | null results = error (show x ++ " not found in lexicon")
-   | otherwise = results
-    where results =  [ (cat,den,mp) | (str,cat,den,mp) <- entries lex , case_eq x str ]
-          case_eq a b = (map toLower a) == (map toLower b)
+   | otherwise    = results
+   where results =  [ (cat,den,mp) | (str,cat,den,mp) <- entries lex , case_eq x str ]
+         case_eq a b = (map toLower a) == (map toLower b)
 
 --itemize takes a string and attempts to make a list of indexed items, starting at 0
 itemize :: String -> [Item]
@@ -323,12 +313,5 @@ itemize' n (h:t) = makeItem n h ++ itemize' (n+1) t
 
 -- creates numbered items by looking up a string in the lexicon
 makeItem :: Int -> String -> [Item]
-makeItem num str = do
-   (cat,sem,mp) <- lex_lookup lexicon str
-   items <- return $ Item num cat str sem  mp (num+1)
-   return items
+makeItem num str = [ Item num cat str sem  mp (num+1) |  (cat,sem,mp) <- lexical_lookup lexicon str ]
 
-
-
-top (Split a _ _) = a
-top (Extend a _ ) = a

@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeOperators, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE TypeOperators, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, TypeFamilies #-}
 
 module Syntax where
 
@@ -13,7 +13,6 @@ data NP = NP          deriving (Eq,Show)
 data S  = S           deriving (Eq,Show)
 data N  = N           deriving (Eq,Show)
 data NUM = NUM        deriving (Eq,Show)
-data Var a = Var a    deriving (Eq,Show)
 data a :\ b = a :\ b  deriving (Eq,Show)
 data a :/ b = a :/ b  deriving (Eq,Show)
 data a :* b = a :* b  deriving (Eq,Show)
@@ -48,24 +47,18 @@ data SynCat
   | SynCat :/: SynCat
   | SynCat :\: SynCat
   | SynCat :*: SynCat
-  | WList [SynCat]
-  deriving (Eq)
+  | WList [SynCat]  
+  deriving Eq
 
 -- The SyntacticType type-class defines which types are syntactic
 -- types, and provides means to put these into a uniform container
 class SyntacticType a where
   wrap :: a -> SynCat
---instance SyntacticType NUM   where
---  wrap NUM = WNum
-instance SyntacticType NP   where
-  wrap NP = WNP
-instance SyntacticType N   where
-  wrap N = WN
-instance SyntacticType NUM   where
-  wrap NUM = WNum
-instance SyntacticType S     where
-  wrap S = WS
-instance (SyntacticType a , SyntacticType b) => SyntacticType (a :\ b)  where
+instance SyntacticType NP   where wrap NP = WNP
+instance SyntacticType N    where wrap N = WN
+instance SyntacticType NUM  where wrap NUM = WNum
+instance SyntacticType S    where wrap S = WS
+instance (SyntacticType a,SyntacticType b) => SyntacticType (a :\ b)  where
   wrap (a:\b) = (wrap a) :\: (wrap b)
 instance (SyntacticType a, SyntacticType b) => SyntacticType (b :/ a)  where
   wrap (b:/a) = (wrap b) :/:  (wrap a)
