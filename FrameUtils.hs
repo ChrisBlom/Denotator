@@ -1,30 +1,18 @@
-{-# LANGUAGE DeriveDataTypeable, TypeFamilies, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving #-}
-{- FrameUtils.hs - ( chris.blom@phil.uu.nl ) -}
+{-# LANGUAGE DeriveDataTypeable, TypeFamilies, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving, DeriveGeneric  #-}
 module FrameUtils where
-
-{-    You do not have to edit anything in this file.
-
-   In FrameUtils functionality some extra functionality for
-   types defined in Frame.hs is defined.
-
-   For each function/value in our frame we can get the
-   - domain
-   - codomain
-   - functionSpace it is in
-   - pretty printing functions
-
-   Additionally, casting to Data.Dynamic for frame types is defined here.
--}
 
 import Frame
 import Data.Dynamic
 import Data.Typeable
+
+import GHC.Generics
 
 import Data.Maybe
 import Data.List
 import Data.Char
 
 import Data.Tuple.Curry
+
 -- Logical implication
 (===>) :: T -> T -> T
 True ===> False = False
@@ -38,15 +26,20 @@ forall f  = all f (domain f)
 -- Cartesian product
 cartesian a b = [ (x,y) | x <- a , y <- b ]
 
+newtype Atomic a = Atomic { el :: a } deriving (Eq,Show)
+
+instance (Enum a, Bounded a) => Finite (Atomic a) where
+  allValues = map Atomic [(minBound) .. (maxBound)]
+
 {-- FrameType defines which types are used in the frame,
     and provides extra functionality for those types.  -}
-class ( Eq f,Typeable f) => FrameType f  where
+class (Typeable f,Eq f) => FrameType f  where
   type DomainType f
   type TargetType f
   data FTree      f
   domainElem        :: f -> (DomainType f)
   targetElem        :: f -> (TargetType f)
-  functionSpaceOf   :: f -> [f]                   -- exponential object
+  homset            :: f -> [f]
   domain            :: f -> [DomainType f]        -- source object
   target            :: f -> [TargetType f]        -- target object
   image             :: f -> [TargetType f]
@@ -59,27 +52,24 @@ class ( Eq f,Typeable f) => FrameType f  where
   domainElem f = head (domain f)
   targetElem f = head (target f)
 
-
-
-
 instance FrameType E  where
   data FTree E  = LeafE E
   type DomainType E = E
   type TargetType E = E
   domain _        = entities
   target _        = entities
-  functionSpaceOf _ = entities
+  homset _ = entities
   image _         = entities
   treeI           = LeafE
   showI = show
-  
+
 instance FrameType Integer  where
   data FTree Integer  = LeafInt Integer
   type DomainType Integer = Integer
   type TargetType Integer = Integer
   domain _        = [0..]
   target _        = [0..]
-  functionSpaceOf _ = [0..]
+  homset _ = [0..]
   image _         = [0..]
   treeI           = LeafInt
   showI = show
@@ -91,7 +81,7 @@ instance FrameType T where
   type TargetType T = T
   domain _        = truthvalues
   target _        = truthvalues
-  functionSpaceOf _ = truthvalues
+  homset _ = truthvalues
   image _         = truthvalues
   treeI           = LeafT
   showI = show
@@ -100,21 +90,22 @@ instance (FrameType a ,FrameType b ) => FrameType (a->b) where
   type DomainType (a->b) = a
   type TargetType (a->b) = b
   data FTree (a->b) = FSplit [(a , FTree b)]
-  domain f          = functionSpaceOf (domainElem f)
-  target f          = functionSpaceOf (targetElem f)
-  image f           = nub $ map f (functionSpaceOf (domainElem f))
-  functionSpaceOf f = functionSpace (domain f) (target f)
+  domain f          = homset (domainElem f)
+  target f          = homset (targetElem f)
+  image f           = nub $ map f (homset (domainElem f))
+  homset f = functionSpace (domain f) (target f)
   showI f = concatMap (\x -> ( (showI x) ++ "|->" ++ (showI ( f x )) ++ "\n"  )) (domain f)
   treeI f = FSplit [ (x,treeI $ f x) | x <- (domain f) ]
+
 
 instance (FrameType a ,FrameType b ) => FrameType (a,b) where
   type DomainType (a,b) = (a, b)
   type TargetType (a,b) = (a,b)
   data FTree (a,b) = FPair (FTree a , FTree b)
-  domain (a,b)      = cartesian (functionSpaceOf a) (functionSpaceOf b)
-  target (a,b)      = cartesian (functionSpaceOf a) (functionSpaceOf b)
-  image  (a,b)      = cartesian (functionSpaceOf a) (functionSpaceOf b)
-  functionSpaceOf  (a,b)      = cartesian (functionSpaceOf a) (functionSpaceOf b)
+  domain (a,b)      = cartesian (homset a) (homset b)
+  target (a,b)      = cartesian (homset a) (homset b)
+  image  (a,b)      = cartesian (homset a) (homset b)
+  homset  (a,b)      = cartesian (homset a) (homset b)
   showI (a,b) = concat [ "(" ,  showI a, showI b,  ")" ]
   treeI (a,b) = FPair (treeI a, treeI b)
 
@@ -122,10 +113,10 @@ instance (FrameType a ,FrameType b , FrameType c ) => FrameType (a,b,c) where
   type DomainType (a,b,c) = (a,b,c)
   type TargetType (a,b,c) = (a,b,c)
   data FTree (a,b,c) = FThree (FTree a , FTree b,FTree c)
-  domain (a,b,c)      = [ (x,y,z) | x <- (functionSpaceOf a) , y <- (functionSpaceOf b) , z <- (functionSpaceOf c) ]
-  target (a,b,c)      = [ (x,y,z) | x <- (functionSpaceOf a) , y <- (functionSpaceOf b) , z <- (functionSpaceOf c) ]
-  image  (a,b,c)      = [ (x,y,z) | x <- (functionSpaceOf a) , y <- (functionSpaceOf b) , z <- (functionSpaceOf c) ]
-  functionSpaceOf  (a,b,c)      = [ (x,y,z) | x <- (functionSpaceOf a) , y <- (functionSpaceOf b) , z <- (functionSpaceOf c) ]
+  domain (a,b,c)      = [ (x,y,z) | x <- (homset a) , y <- (homset b) , z <- (homset c) ]
+  target (a,b,c)      = [ (x,y,z) | x <- (homset a) , y <- (homset b) , z <- (homset c) ]
+  image  (a,b,c)      = [ (x,y,z) | x <- (homset a) , y <- (homset b) , z <- (homset c) ]
+  homset  (a,b,c)      = [ (x,y,z) | x <- (homset a) , y <- (homset b) , z <- (homset c) ]
   showI (a,b,c) = concat [ "(" ,  showI a, showI b,showI c,  ")" ]
   treeI (a,b,c) = FThree (treeI a, treeI b,treeI c)
 
@@ -153,16 +144,7 @@ functionSpace a b = do
   funcrel <- sequence $ map (\ae -> [ (ae,be) | be <- b] ) a
   return ( relation_to_function funcrel)
 
-
--- class (Typeable a) => SemanticType a where
-
-
-
-
-
 newtype Denotation = Sem Dynamic
-
-
 
 typeE = typeOf (undefined::E)
 typeT = typeOf (undefined::T)
@@ -194,8 +176,6 @@ showType (Sem x) = reverse $ clean [] $ concat [show (dynTypeRep x)  ] where
           | otherwise = "~"
 
 isId f = all (\x -> (f x) == x ) (domain f)
-
-
 
 instance Show Denotation where
   show (Sem x) = reverse $ clean [] $ concat [ "" , showcast typeRep ] where
@@ -256,4 +236,3 @@ instance Show (((E->T)->T)->T) where
 
 
 case_eq a b = (map toLower a) == (map toLower b)
-

@@ -6,8 +6,8 @@ module Frame where
 
 import Data.Typeable
 import Data.List
-
-{- In Frame.hs we set up our frame.
+ 
+{- In Frame.hs we set up our universe of discourse.
    All we have to do is give the atomic domains (of entities and truthvalues),
    Haskell will then do all the lambda abstraction and function application stuff-}
 
@@ -19,9 +19,6 @@ data E = Yoda | Luke | Leia | Han | Vader | Chewbacca
 {- T : a type synonym for Bool.
    Bool is Haskell's built-in type for truth-values.
    (It is defined as: data Bool = True | False )
-   In semantics usually T as the type of truth-values, 
- - so for consistency with the material, and for brevity, 
-   we allow Bool to also be written as T 
   -}
 type T = Bool
 

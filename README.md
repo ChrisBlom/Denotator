@@ -3,8 +3,7 @@ Denotator
 
 Denotator is a lightweight Haskell framework that allows you the use GHCi as an interactive tool to explore formal semantics.
 
-Formal semantics is a subfield from linguistics which studies how meaning of language using mathematical tools.
-
+Formal semantics is a subfield from linguistics which studies meaning using mathematical tools.
 This project makes it easy to do semantics in Haskell.
 
 Prerequisites
