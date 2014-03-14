@@ -6,15 +6,15 @@ import FrameUtils
 
 import Test.QuickCheck
 
--- Boolean type class defines common operation for T or Boolean functions
--- (characteristic functions of set/relations) 
+-- The Boolean type class defines common operation on Boolean type
+-- (characteristic functions of booleans/set/relations)
 -- -}
 class (FrameType a) => Boolean a where
   (/\)  :: a -> a -> a -- join
   (\/)  :: a -> a -> a -- meet
   complement :: a -> a -- complement
-  (.<.) :: a -> a -> T -- order
-  (.=.) :: a -> a -> T -- order
+  (.<.) :: a -> a -> T -- logical order
+  (.=.) :: a -> a -> T -- logical equivalence
   one   :: a           -- top
   zero  :: a           -- bottom
 
@@ -33,13 +33,12 @@ instance Boolean T where
 
 -- if type b is Boolean then (a->b) is Boolean as well
 instance (FrameType a,Boolean b) => Boolean (a -> b) where
-  f /\ g        = \x -> f x /\ g x
-  f \/ g        = \x -> f x \/ g x
-  complement f  = complement . f
-  f .<. g       = forall ( \x -> f x .<. g x )
-  f .=. g       = forall ( \x -> f x .=. g x )
+  f /\ g        = \x -> (f x) /\ (g x)
+  f \/ g        = \x -> (f x) \/ (g x)
+  complement f  = \x -> complement (f x)
+  f .<. g       = forall ( \x -> (f x) .<. (g x) )
+  f .=. g       = forall ( \x -> (f x) .=. (g x) )
   one           = \_ -> one
-  zero          = \_ -> zero
 
 onex :: (E->T)
 onex = one
@@ -52,18 +51,12 @@ instance Arbitrary E where
 instance CoArbitrary E where
   coarbitrary = variant . fromEnum
 
-entails f g = ( f .<. g ) 
-is_restrictive m   = (\ f ->   m f .<. f )
-is_corestrictive m = (\ f ->   m f .<. complement f )
-is_disjoint f g    = (  \x ->  (f /\ g) x .=. zero  )
+entails f g = ( f .<. g )
+is_restrictive modifier   = (\f -> (modifier f) .<. f )
+is_corestrictive modifier = (\f -> (modifier f) .<. (complement f) )
+is_disjoint f g    = ( \x ->  (f /\ g) x .=. zero  )
 is_intersectiveWith m f = (\g -> (m g) .=. (f /\ g)  )
 
 
 fake :: (E->T) -> (E-> T)
-fake x = complement x     
-
-
-
-
-
-
+fake x = complement x

@@ -1,11 +1,11 @@
-{-# LANGUAGE DeriveDataTypeable, TypeFamilies, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving, DeriveGeneric  #-}
+{-# LANGUAGE DeriveDataTypeable, TypeFamilies, FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving, DeriveGeneric, TypeOperators, MultiParamTypeClasses, TypeSynonymInstances, FlexibleInstances, TypeFamilies #-}
 module FrameUtils where
 
 import Frame
 import Data.Dynamic
 import Data.Typeable
 
-import GHC.Generics
+import qualified GHC.Generics as Generics
 
 import Data.Maybe
 import Data.List
@@ -26,10 +26,10 @@ forall f  = all f (domain f)
 -- Cartesian product
 cartesian a b = [ (x,y) | x <- a , y <- b ]
 
-newtype Atomic a = Atomic { el :: a } deriving (Eq,Show)
+--newtype Atomic a = Atomic { el :: a } deriving (Eq,Show)
 
-instance (Enum a, Bounded a) => Finite (Atomic a) where
-  allValues = map Atomic [(minBound) .. (maxBound)]
+-- instance (Enum a, Bounded a) => Finite (Atomic a) where
+ --  allValues = map Atomic [(minBound) .. (maxBound)]
 
 {-- FrameType defines which types are used in the frame,
     and provides extra functionality for those types.  -}
@@ -45,10 +45,13 @@ class (Typeable f,Eq f) => FrameType f  where
   image             :: f -> [TargetType f]
   showI             :: f -> String
   treeI             :: f -> (FTree f )
+
   hide              :: (Typeable f) => f ->  Denotation
   uncover           :: Denotation -> Maybe f
+
   hide              = Sem . toDyn
-  uncover  (Sem x)  = fromDynamic x
+  uncover           = fromDynamic . unSem
+
   domainElem f = head (domain f)
   targetElem f = head (target f)
 
@@ -167,7 +170,7 @@ showType (Sem x) = reverse $ clean [] $ concat [show (dynTypeRep x)  ] where
 
       typeRep = dynTypeRep x
       showcast t
-          | t == typeE   = show $ fromJust $  ((fromDynamic x) :: Maybe (E))
+          | t == typeE   = show . fromJust $  ((fromDynamic x) :: Maybe (E))
           | t == typeT   = show $ fromJust $ ((fromDynamic x) :: Maybe (T))
           | t == typeET  = show $ fromJust $ ((fromDynamic x) :: Maybe (E -> T))
           | t == typeEET = show $ fromJust $  ((fromDynamic x) :: Maybe (E -> E -> T))
@@ -236,3 +239,126 @@ instance Show (((E->T)->T)->T) where
 
 
 case_eq a b = (map toLower a) == (map toLower b)
+
+
+
+{- Type level syntactic types -}
+data NP = NP          deriving (Eq,Show)
+data S  = S           deriving (Eq,Show)
+data N  = N           deriving (Eq,Show)
+data NUM = NUM        deriving (Eq,Show)
+data a :\ b = a :\ b  deriving (Eq,Show)
+data a :/ b = a :/ b  deriving (Eq,Show)
+data a :* b = a :* b  deriving (Eq,Show)
+
+infixr 5 :\
+infixl 6 :/
+
+-- The CorrespondingTypes type class defines the relation beteen
+-- syntactic and semantic types.
+class (SyntacticType a,FrameType b) => CorrespondingTypes a b where
+instance CorrespondingTypes NP   E
+instance CorrespondingTypes N   (E->T)
+instance CorrespondingTypes S   (T)
+instance CorrespondingTypes NUM (Integer)
+instance (CorrespondingTypes a a'
+         , CorrespondingTypes b b')
+         => CorrespondingTypes (a :\ b)  (a' -> b')
+instance (CorrespondingTypes a a'
+         , CorrespondingTypes b b')
+         => CorrespondingTypes (b :/ a)  (a' -> b')
+instance ( CorrespondingTypes a a'
+         , CorrespondingTypes b b')
+          => CorrespondingTypes (a :* b) (a', b')
+
+
+{- SynCat : Syntactic Categories, uniform wrapper for syntactic types -}
+data SynCat
+  = WNP
+  | WN
+  | WS
+  | WNum
+  | SynCat :/: SynCat
+  | SynCat :\: SynCat
+  | SynCat :*: SynCat
+  | WList [SynCat]
+  deriving Eq
+
+-- The SyntacticType type-class defines which types are syntactic
+-- types, and provides means to put these into a uniform container
+class SyntacticType a where
+  wrap :: a -> SynCat
+instance SyntacticType NP   where wrap NP = WNP
+instance SyntacticType N    where wrap N = WN
+instance SyntacticType NUM  where wrap NUM = WNum
+instance SyntacticType S    where wrap S = WS
+instance (SyntacticType a,SyntacticType b) => SyntacticType (a :\ b)  where
+  wrap (a:\b) = (wrap a) :\: (wrap b)
+instance (SyntacticType a, SyntacticType b) => SyntacticType (b :/ a)  where
+  wrap (b:/a) = (wrap b) :/:  (wrap a)
+instance (SyntacticType a , SyntacticType b) => SyntacticType (a :* b)   where
+  wrap (a:*b) =  (wrap a) :*: (wrap b)
+instance (SyntacticType a) => SyntacticType [a]   where
+  wrap a = WList $ map wrap a
+
+-- Show instanc for SynCat
+instance Show SynCat where
+  showsPrec d x = case x of
+    WNP      -> showString "np"
+    WNum     -> showString "num"
+    WN       -> showString "n"
+    WS       -> showString "s"
+    WList x  -> showsPrec (0) x
+    (a :\: b) ->
+          showParen (d > up_prec) $
+             showsPrec (up_prec+1) a . showString "\\" .  showsPrec (up_prec+1) b
+             where up_prec = 10
+    (a :*: b) ->
+          showParen (d > up_prec) $
+             showsPrec (up_prec+1) a . showString "*" .  showsPrec (up_prec+1) b
+             where up_prec = 10
+    (a :/: b) ->
+          showParen (d > up_prec) $
+             showsPrec (up_prec+1) a . showString "/" .  showsPrec (up_prec+1) b
+             where up_prec = 10
+
+
+
+brackets x = "["++x++"]"
+parens a = "("++a++")"
+bracket a = "("++a++")"
+cbracket a = "{"++a++"}"
+sbracket a = "["++a++"]"
+dbracket a = "[|"++a++"|]"
+
+entry :: (FrameType sem,SyntacticType syn ,CorrespondingTypes syn sem)
+      => String -> syn -> sem  -> LexiconEntry
+entry string syntax denotation = (string,wrap syntax, hide denotation,[])
+
+
+entryString (str,syn,den,mp) =
+    [ dbracket $ show str ," = ",show den," ",showType den ,"\n",show syn]
+entryArr (str,syn,den,mp) =
+     [ show str , " | "
+     , show syn     , "|"
+     , showType den   , "|"
+     , show den       , "|"
+     , if not $ null mp then unwords $ map show mp else ""
+      ]
+
+instance Show Lexicon where
+  show lexicon =  unlines $ map space rows  where
+    rows    = map entryArr (entries lexicon)
+    widths  = foldr (zipWith max . map length) [0..] $ rows
+    space   = concat . map (trimTo 40) . zipWith fillTo widths
+    fillTo n string = take n $ string ++ repeat ' '
+    trimTo n string = if length string > n then (take (n-3) string) ++ "..." else string
+
+data MP = MP String Denotation
+instance Show MP  where show (MP str _) = str
+instance Eq MP    where (MP a _) == (MP b _) = a == b
+
+
+
+type LexiconEntry = (String, SynCat, Denotation, [MP])
+newtype Lexicon = Lexicon { entries :: [LexiconEntry] }

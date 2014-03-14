@@ -2,22 +2,23 @@ module Parser where
 
 import Frame
 import FrameUtils
-import Syntax
 import Lexicon
 import Data.List
 import Data.Char
 import Data.Maybe
-import Text.PrettyPrint hiding (Mode,cat)
 import Data.Dynamic
 import Data.Typeable
+import Control.Monad
+import Text.PrettyPrint hiding (Mode,cat)
 
 -- Parses a sentence and shows the derivations (as decorated syntax trees)
+parse :: [Char] -> IO ()
 parse sentence
  | size == 0 	= putStrLn "The sentence could not be completely parsed"
- | size == 1 	= putStrLn $ " There is one derivation for " ++ show sentence ++ " :\n" ++  derivations
+ | size == 1 	= putStrLn $ "There is one derivation for " ++ show sentence ++ " :\n" ++  derivations
  | otherwise	= putStrLn $ "There are "++show size++" derivations for " ++ show sentence ++ " :\n"++ derivations
  where
-    n = length $ words sentence ;
+    n = length $ words sentence
     succes (Split x _ _) = start x == 0 && end x == n
     succes (Extend x _)  = start x == 0 && end x == n
     succeses = filter succes $ (fst3 . run_ptree ) sentence
@@ -26,21 +27,21 @@ parse sentence
 
 -- try : returns the top result in the parsing proces
 -- this is handy for trying incomplete sentences.
-try input = putStr (show c ++ "\n" ++ show a) where
-   (c, a) = run_parser input
-
+try :: [Char] -> IO ()
+try input = putStr (concat [show item , "\n" , show denotation]) where
+   (item, denotation) = run_parser input
 
 {- An Item is used for representing linguistic resources in the parser.
  It is a 6-tuple consisting of:
  * a left index, a categorial type, a String, a denotation,
  * ,meaning postulates and a right index -}
-data Item   
+data Item
   = Item
   { start  :: Int
   , cat    :: SynCat
   , str    :: String
   , den    :: Denotation
-  , mps    :: [MP] 
+  , mps    :: [MP]
   , end    :: Int
   }
 
@@ -50,6 +51,8 @@ instance Eq Item where a == b = and [num_eq a b,cat_eq a b,str_eq a b]
 num_eq a b = start a == start b && end a == end b
 cat_eq a b = cat a == cat b
 str_eq a b = str a == str b
+
+
 -- Items are adjacent if the right and left index are equal
 adjacent l r = end l == start r
 
@@ -71,7 +74,7 @@ top (Split a _ _) = a
 top (Extend a _ ) = a
 
 prettyprint :: Tree Item -> Doc
-prettyprint x = ppD $ path [] x
+prettyprint x = prettyPrintT $ path [] x
 
 ppItem_a, ppItem_b :: Item -> Doc
 ppItem_a item
@@ -96,40 +99,43 @@ path ls (Split x l r) =
 		(path (ls++[L]) l)
 		(path (ls++[R]) r)
 
-ppMode _ [] = empty
-ppMode False [R] = mtab <> ends
-ppMode True [R] = tab
-ppMode False [L] = mtab <> vr
-ppMode True [L] = bar
-ppMode True [D] = bar
-ppMode False [D] =  mtab <> vr
-ppMode b (L:t) = bar <> ppMode b t
-ppMode b (D:t) = tab <> ppMode b t
-ppMode b (R:t) = tab <> ppMode b t
+ppMode flag path = case (flag,path) of
+  ( _     , []  )  -> empty
+  ( b     , (L:t) ) -> bar <> ppMode b t
+  ( b     , (D:t) ) -> tab <> ppMode b t
+  ( b     , (R:t) ) -> tab <> ppMode b t
+  -- terminal nodes
+  ( False , [R] ) ->  mtab <> ends
+  ( True  , [R] ) ->  tab
+  ( False , [L] ) ->  mtab <> vr
+  ( True  , [L] ) -> bar
+  ( True  , [D] ) -> bar
+  ( False , [D] ) ->  mtab <> vr
 
-ppD (Split (m,i) Nil Nil) =
+
+prettyPrintT (Split (m,i) Nil Nil) =
      (if m /= [] && last m == L then ppMode True m else empty)
  $+$ ppMode False m  <> dot <> space <> ppItem_a i
  $+$ ppMode True m <> space <> dot'  <> space <> ppItem_b i
  $+$ ppMode True m
 
-ppD (Split (m,i) l r) =
+prettyPrintT (Split (m,i) l r) =
      ppMode False m <> space <> ppItem_a i
  $+$ ppMode True m <> space <> space <> ppItem_b i
- $+$ ppD l
- $+$ ppD r
+ $+$ prettyPrintT l
+ $+$ prettyPrintT r
 
-ppD (Extend (m,i) Nil ) =
+prettyPrintT (Extend (m,i) Nil ) =
    ppMode True m <> space <> ppItem_a i
 -- $+$ ppMode True m <> space <> space <> ppItem_b i
  -- $+$ ppMode True m <> mtab <> pipe
 
 
-ppD (Extend (m,i) l ) =
+prettyPrintT (Extend (m,i) l ) =
      ppMode False m <> space <> ppItem_a i
  $+$ ppMode True m <> space <> space <> ppItem_b i
  $+$ ppMode True m <> mtab <> pipe
- $+$ ppD l
+ $+$ prettyPrintT l
 
 tab   = spacea 4
 mtab  = spacea 3
@@ -213,65 +219,42 @@ a .*. b = bracket  $ a ++ "*" ++ b  -- for pairing
 (.+.) :: (Eq a) => [a] -> [a] -> [a]
 a .+. b = a `union` b
 
--- combine the rules in a single function
+-- combine the rules into a single function
 rules1 x   sub = concatMap (\f -> f x) [] -- [rule_Lift]
-rules x y sub = concat $ map (\f -> f x y) rulebank where
-	rulebank = baserules ++ map flip baserules
+
+rules x y sub = concatMap (\f -> f x y) all_rules where
+	all_rules = baserules ++ map flip baserules
 	baserules = [rule_Pair sub,rule_AppRight ,rule_AppLeft]
 
-
--- dlift x = apply (hide lift) x
-
-         {-
-rule_Lift
-     (Item i  cat      m      x          ma 		k )
-     =  if cat == (wrap NP) then
-     [(Item i  (wrap gq)    ("^"++m)(dlift x)  	ma    k )] else []
-rule_List _ = []
-           -}
-
-
-
 -- The parsing procedure
-run_parser sent = exhaust_agenda (Chart [] ,Agenda items )
-	where items = itemize sent
+run_parser :: String -> (Chart, Agenda)
+run_parser sentence = exhaust_agenda (Chart [] ,Agenda (itemize sentence) )
 
 -- a Agenda-driven chart-based parser
 -- Based on "Parsing with Structure-Preserving Categorial Grammars" p. 79
-exhaust_agenda (a,Agenda i) = 
+exhaust_agenda (a,Agenda i) =
 	(\(l,r,_) -> (l,r) ) (exhaust_agenda' (a,Agenda i,subformulas i))
-exhaust_agenda' :: (Chart,Agenda,[SynCat]) -> (Chart,Agenda,[SynCat])
 
-{- If the agenda is empty, return 
-   If the agenda is not empty:
-	Take the first item on the agenda (agenda_head)
-	  if agenda_head is already in the chart 
-	  	then continue with the old chart and the remainder of the agenda
-	  	else: 
-            Generate al the possible results of applying the rules on the agenda_head and every
- 		    item in the chart.
-			Put the results in the agenda.
-			Put the agenda_head in the chart.
-			Continue with the new chart and agenda.
-	  	-}
+exhaust_agenda' :: (Chart, Agenda, [SynCat]) -> (Chart, Agenda, [SynCat])
+exhaust_agenda' (Chart chart , Agenda [] , sub) =
+  (Chart chart , Agenda [] , sub) -- stop when the agenda is empty
+exhaust_agenda' (Chart chart , Agenda (agenda_head:agenda_tail), subfs)
+  -- the next item on the agenda is already known: proceed to next item
+  | agenda_head `elem` chart = (Chart chart,Agenda agenda_tail , subfs)
+  -- generate new items based on current chart and head of agenda and recur
+  | otherwise = let
+     -- apply all rules to the current chart and head of the agenda
+     generated  = [ result | chart_item <- chart , result <- rules chart_item agenda_head subfs]
+     next       = (Chart $ [agenda_head] `union` chart,
+                   Agenda (generated `union` agenda_tail)  ,
+                   subfs)
+     in exhaust_agenda' next
 
-exhaust_agenda' (Chart chart , Agenda [] , sub) = (Chart chart , Agenda [] , sub)
-
-exhaust_agenda' (Chart old_chart , Agenda (agenda_head:agenda_tail), subfs) =
-   if agenda_head `elem` old_chart  
-	   then exhaust_agenda'(Chart old_chart, Agenda agenda_tail ,subfs)
-	   else exhaust_agenda'(Chart new_chart, Agenda new_agenda	,subfs)
-	    where results 	 = [ result | chart_item <- old_chart , result <- rules chart_item agenda_head subfs]
-          	  new_agenda = results `union` agenda_tail
-          	  new_chart  = [agenda_head] `union` old_chart
-
-
---exhaust_agenda' (Chart chart , Agenda [] , sub) = (Chart chart , Agenda [] , sub)
 ptree' (chart , []    	   ,sub) = ( chart ,[],sub)
 ptree' (chart , (y:agenda) , sub)
 	|  y `elem` chart 	= ptree' (chart   ,agenda   ,sub)
-	| otherwise			    = ptree' (newchart,newagenda,sub)
-	where 
+	| otherwise		= ptree' (newchart,newagenda,sub)
+	where
 		produced  =  [ (Split result z y) | z <- chart , result <- rules (top z) (top y) sub ]
 		produced2  = [ (Extend result y) | result <- rules1 (top y) sub ]
 		newagenda = agenda `union` produced `union` produced2
@@ -282,18 +265,19 @@ run_ptree sent = ptree' ( [] , map (\x -> Split x Nil Nil) items, subformulas it
 fst3 (a,_,_) = a
 
 -- Subformula computation for product formula's
-data Polarity = Plus | Min
+data Polarity = Plus | Min deriving (Eq, Show)
 
-subform Plus (a :*: b) = [a :*: b] ++ subform Plus a ++ subform Plus b
+subform :: Polarity -> SynCat -> [SynCat]
+subform Plus (a :*: b) = concat [ [a :*: b] , subform Plus a , subform Plus b ]
 subform Min  (c :/: x) = case x of
 	(a :*: b ) -> subform Plus x ++ subform Min c
-	_		       -> subform Min c
+	_	   -> subform Min c
 subform _ _ = []
 
-subformulas items = concat $ map itemsubform items
-	where itemsubform x = subform Min (cat x)
+subformulas :: [Item] -> [SynCat]
+subformulas items = concatMap (\x -> subform Min (cat x)) items
 
-  -- [(String, SynCat, Denotation,[MP])]
+
 -- lexical_lookup: return the matching entries in the lexicon. case is ignored
 lexical_lookup :: Lexicon -> String -> [(SynCat,Denotation,[MP])]
 lexical_lookup lex x
@@ -308,10 +292,15 @@ itemize str = itemize' 0 (words str)
 
 -- itemize' makes a list of numbered items from a list with number n
 itemize' :: Int -> [String] -> [Item]
-itemize' n []    = []
-itemize' n (h:t) = makeItem n h ++ itemize' (n+1) t
+itemize' i [] = []
+itemize' i (word:ws) = makeItem i word ++ itemize' (i+1) ws
 
 -- creates numbered items by looking up a string in the lexicon
 makeItem :: Int -> String -> [Item]
 makeItem num str = [ Item num cat str sem  mp (num+1) |  (cat,sem,mp) <- lexical_lookup lexicon str ]
 
+getEntry :: String -> IO ()
+getEntry string = sequence_ $ do
+  entry@(str,syn,den,mp) <- entries lexicon
+  guard ( str `case_eq` string )
+  return (putStrLn . show $ entryString entry)
